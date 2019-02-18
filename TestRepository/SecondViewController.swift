@@ -7,14 +7,399 @@
 //
 
 import UIKit
+import AdSupport
 
 class SecondViewController: UIViewController {
 
+	@IBOutlet var viewPager: ViewPager!
+
+	@IBOutlet var label2: UILabel!
 	override func viewDidLoad() {
 		super.viewDidLoad()
-		// Do any additional setup after loading the view, typically from a nib.
+		label2.text = "AdId: \(ASIdentifierManager.shared().advertisingIdentifier.uuidString)\nDevId: \(UIDevice.current.identifierForVendor?.uuidString ?? "NA")"
+		
+		self.viewPager.animationDuration = 0.5
+		self.viewPager.offscreenPageLimit = 2
+		self.viewPager.padding = UIEdgeInsets(top: 0, left: 50, bottom: 0, right: 50)
+		self.viewPager.distanceBetweenPages = 10
+		self.viewPager.dataSource = self
+		self.viewPager.delegate = self
 	}
-
-
+	
+	private var timer: Timer?
+	override func viewDidAppear(_ animated: Bool) {
+		super.viewDidAppear(animated)
+		
+		self.timer = Timer.scheduledTimer(timeInterval: 2, target: self, selector: #selector(self.updatePage), userInfo: nil, repeats: true)
+	}
+	
+	override func viewDidDisappear(_ animated: Bool) {
+		super.viewDidDisappear(animated)
+		
+		self.timer?.invalidate()
+	}
+	
+	@objc private func updatePage() {
+		self.viewPager.currentIndex = (self.viewPager.currentIndex + 3)%self.numberOfPages()
+	}
 }
 
+extension SecondViewController: ViewPagerDataSource, ViewPagerDelegate {
+	func parentController() -> UIViewController {
+		return self
+	}
+	func numberOfPages() -> Int {
+		return 10
+	}
+	func page(at index: Int) -> UIViewController {
+		let vc = self.storyboard!.instantiateViewController(withIdentifier: "ItemViewController")
+		vc.view.backgroundColor = [
+			.red, .blue, .green, .yellow, .purple, .magenta, .cyan
+		][index%6]
+		DispatchQueue.main.async {
+			(vc.view.subviews.first as? UILabel)?.text = "Screen #\(index)"
+		}
+		return vc
+	}
+	func forceUpdate(page: UIViewController, at index: Int) -> Bool {
+		return false
+	}
+	var isAllowedToLoadPreviousPage: Bool {
+		return true
+	}
+	var isAllowedToLoadNextPage: Bool {
+		return true
+	}
+	
+	func pager(_ pager: ViewPager, willReplace viewController1: UIViewController?, at index1: Int?, with viewController2: UIViewController, at index2: Int) {
+		print("ViewPager: willReplace: \(viewController1) at \(index1) with \(viewController2) at \(index2)")
+	}
+	func pager(_ pager: ViewPager, didReplace viewController1: UIViewController?, at index1: Int?, with viewController2: UIViewController, at index2: Int) {
+		print("ViewPager: didReplace: \(viewController1) at \(index1) with \(viewController2) at \(index2)")
+	}
+}
+
+//
+//  ViewPager.swift
+//  Hello English for Kids
+//
+//  Created by Ravi Sisodia on 28/09/18.
+//  Copyright © 2018 CultureAlley. All rights reserved.
+//
+
+protocol ViewPagerDataSource {
+	func parentController() -> UIViewController
+	func numberOfPages() -> Int
+	func page(at index: Int) -> UIViewController
+	func forceUpdate(page: UIViewController, at index: Int) -> Bool
+
+	var isAllowedToLoadPreviousPage: Bool { get }
+	var isAllowedToLoadNextPage: Bool { get }
+}
+
+protocol ViewPagerDelegate {
+	func pager(_ pager: ViewPager, willReplace viewController1: UIViewController?, at index1: Int?, with viewController2: UIViewController, at index2: Int)
+	func pager(_ pager: ViewPager, didReplace viewController1: UIViewController?, at index1: Int?, with viewController2: UIViewController, at index2: Int)
+}
+
+open class ViewPager: UIView {
+	override init(frame: CGRect) {
+		super.init(frame: frame)
+		
+		self.registerSwipeGesture()
+	}
+	
+	required public init?(coder aDecoder: NSCoder) {
+		super.init(coder: aDecoder)
+		
+		self.registerSwipeGesture()
+	}
+	
+	private func registerSwipeGesture() {
+		let p = UIPanGestureRecognizer(target: self, action: #selector(self.didRecognizePanGesture(_:)))
+		p.maximumNumberOfTouches = 1
+		self.gestureRecognizers = [p]
+	}
+	
+	@objc private func didRecognizePanGesture(_ panGesture: UIPanGestureRecognizer) {
+		guard self.isAllowedToLoadPreviousPage || self.isAllowedToLoadNextPage else {
+			return
+		}
+		var t = panGesture.translation(in: self)
+		let rtl = UIView.userInterfaceLayoutDirection(for: self.semanticContentAttribute) == .rightToLeft
+		t = rtl ? CGPoint(x: -t.x, y: t.y) : t
+		if !self.isAllowedToLoadNextPage, t.x < 0 {
+			return self.reset()
+		}
+		if !self.isAllowedToLoadPreviousPage, t.x > 0 {
+			return self.reset()
+		}
+		switch panGesture.state {
+		case .began: self.touchBegan(at: t)
+		case .changed: self.touchTranslated(by: t)
+		default: self.touchEnded(with: t, and: panGesture.velocity(in: self))
+		}
+	}
+	
+	private var moveEnabled = true
+	private var lastSwipeTranslation: CGPoint = .zero
+	private var thresholdSpeedForSwipe: CGFloat = 500
+	
+	private var isAllowedToLoadPreviousPage: Bool {
+		return self.dataSource?.isAllowedToLoadPreviousPage ?? false
+	}
+	private var isAllowedToLoadNextPage: Bool {
+		return self.dataSource?.isAllowedToLoadNextPage ?? false
+	}
+	
+	private var viewControllers = [UIViewController?]()
+	
+	var animationDuration: TimeInterval = 0.25
+	var offscreenPageLimit = 1, distanceBetweenPages: CGFloat = 0, padding: UIEdgeInsets = .zero
+	var dataSource: ViewPagerDataSource? {
+		didSet {
+			for viewController in self.viewControllers {
+				viewController?.view.removeFromSuperview()
+				viewController?.removeFromParent()
+			}
+			guard let ds = self.dataSource, ds.numberOfPages() > 0 else {
+				return
+			}
+
+			self.viewControllers = [UIViewController?](repeating: nil, count: ds.numberOfPages())
+			self.currentIndex = 0
+		}
+	}
+	var delegate: ViewPagerDelegate?
+	
+	private var _currentIndex: Int = -1
+	var currentIndex: Int {
+		get {
+			return self._currentIndex
+		}
+		set {
+			self.setCurrent(index: newValue, completion: {})
+		}
+	}
+	
+	func setCurrent(index: Int, completion: @escaping () -> ()) {
+		guard self.moveEnabled else {
+			return
+		}
+		self.fifoQueue.append((to: index, completion: completion))
+		if self.fifoQueue.count == 1 {
+			self.move(from: self._currentIndex, to: index)
+		}
+	}
+
+	private func isValidIndex(_ index: Int) -> Bool {
+		return index >= 0 && index < self.viewControllers.count
+	}
+
+	private var fifoQueue = [(to: Int, completion: (() -> ()))]()
+	private func move(from oldIndex: Int, to newIndex: Int) {
+		guard oldIndex != newIndex, self.isValidIndex(newIndex), let ds = self.dataSource else {
+			self.fifoQueue.remove(at: 0).completion()
+			guard let next = self.fifoQueue.first else {
+				return
+			}
+			return self.move(from: self._currentIndex, to: next.to)
+		}
+		let d = newIndex > oldIndex ? 1 : -1, parent = ds.parentController()
+		
+		let willBeRemovedIndices = (0..<self.viewControllers.count).filter { i in
+			return (i < newIndex - self.offscreenPageLimit || i > newIndex + self.offscreenPageLimit) && (self.viewControllers[i] != nil)
+		}
+		var willBeAddedIndices = (max(0, newIndex - self.offscreenPageLimit)...min(ds.numberOfPages() - 1, newIndex + self.offscreenPageLimit)).filter { i in
+			if let vc = self.viewControllers[i], ds.forceUpdate(page: vc, at: i) {
+				vc.view.removeFromSuperview()
+				vc.removeFromParent()
+				self.viewControllers[i] = nil
+			}
+			guard self.viewControllers[i] == nil else {
+				return false
+			}
+			self.viewControllers[i] = ds.page(at: i)
+			return true
+		}
+		willBeAddedIndices = d == -1 ? willBeAddedIndices.reversed() : willBeAddedIndices
+		
+		DispatchQueue.main.async {
+			if self.isValidIndex(oldIndex) {
+				self.delegate?.pager(self, willReplace: self.viewControllers[oldIndex], at: oldIndex, with: self.viewControllers[newIndex]!, at: newIndex)
+			} else {
+				self.delegate?.pager(self, willReplace: nil, at: oldIndex == -1 ? nil : oldIndex, with: self.viewControllers[newIndex]!, at: newIndex)
+			}
+		}
+		
+		for index in willBeRemovedIndices {
+			self.viewControllers[index]?.willMove(toParent: nil)
+		}
+		
+		let w = self.bounds.width - self.padding.left - self.padding.right
+		let h = self.bounds.height - self.padding.top - self.padding.bottom
+		for index in willBeAddedIndices {
+			guard let viewController = self.viewControllers[index] else {
+				continue
+			}
+			parent.addChild(viewController)
+			self.addSubview(viewController.view)
+			if d == 1 {
+				if index == willBeAddedIndices.first {
+					if oldIndex != -1, let prev = self.viewControllers[oldIndex + self.offscreenPageLimit] {
+						let x = prev.view.frame.origin.x + w + self.distanceBetweenPages
+						viewController.view.frame = CGRect(x: x, y: self.padding.top, width: w, height: h)
+						print("ViewPager: willBeAddedIndex2: \(index), \(viewController.view.frame)")
+					} else {
+						viewController.view.frame = CGRect(x: self.padding.left, y: self.padding.top, width: w, height: h)
+						print("ViewPager: willBeAddedIndex1: \(index), \(viewController.view.frame)")
+					}
+				} else if let prev = self.viewControllers[index - 1] {
+					let x = prev.view.frame.origin.x + w + self.distanceBetweenPages
+					viewController.view.frame = CGRect(x: x, y: self.padding.top, width: w, height: h)
+					print("ViewPager: willBeAddedIndex3: \(index), \(viewController.view.frame)")
+				}
+			} else {
+				if index == willBeAddedIndices.first {
+					if let next = self.viewControllers[oldIndex - self.offscreenPageLimit] {
+						let x = next.view.frame.origin.x - w - self.distanceBetweenPages
+						viewController.view.frame = CGRect(x: x, y: self.padding.top, width: w, height: h)
+						print("ViewPager: willBeAddedIndex4: \(index), \(viewController.view.frame)")
+					} else {
+						// Error
+					}
+				} else if let next = self.viewControllers[index + 1] {
+					let x = next.view.frame.origin.x - w - self.distanceBetweenPages
+					viewController.view.frame = CGRect(x: x, y: self.padding.top, width: w, height: h)
+					print("ViewPager: willBeAddedIndex5: \(index), \(viewController.view.frame)")
+				}
+			}
+		}
+		
+		let completion: ((Bool) -> ()) = { _ in
+			for index in willBeRemovedIndices {
+				guard let viewController = self.viewControllers[index] else {
+					continue
+				}
+				viewController.view.removeFromSuperview()
+				viewController.removeFromParent()
+				self.viewControllers[index] = nil
+			}
+			for index in willBeAddedIndices {
+				self.viewControllers[index]?.didMove(toParent: parent)
+			}
+			
+			self._currentIndex = newIndex
+			self.fifoQueue.remove(at: 0).completion()
+			if let next = self.fifoQueue.first {
+				return self.move(from: self._currentIndex, to: next.to)
+			} else {
+				DispatchQueue.main.async {
+					if self.isValidIndex(oldIndex) {
+						self.delegate?.pager(self, didReplace: self.viewControllers[oldIndex], at: oldIndex, with: self.viewControllers[newIndex]!, at: newIndex)
+					} else {
+						self.delegate?.pager(self, didReplace: nil, at: oldIndex == -1 ? nil : oldIndex, with: self.viewControllers[newIndex]!, at: newIndex)
+					}
+				}
+			}
+		}
+		
+		if oldIndex == -1 {
+			completion(true)
+		} else {
+			let x = self.viewControllers[newIndex]?.view.frame.origin.x ?? 0
+			let f = ((w + self.distanceBetweenPages) - abs(x - self.padding.left))/(w + self.distanceBetweenPages)
+			UIView.animate(withDuration: self.animationDuration*Double(f), animations: {
+				for i in 0..<newIndex {
+					guard let vc = self.viewControllers[i] else {
+						continue
+					}
+					vc.view.frame.origin.x = self.padding.left - CGFloat(newIndex - i)*(vc.view.frame.size.width + self.distanceBetweenPages)
+				}
+				self.viewControllers[newIndex]?.view.frame.origin.x = self.padding.left
+				for i in min(ds.numberOfPages() - 1, newIndex + 1)...min(ds.numberOfPages() - 1, newIndex + self.offscreenPageLimit) {
+					guard let vc = self.viewControllers[i] else {
+						continue
+					}
+					vc.view.frame.origin.x = self.padding.left + CGFloat(i - newIndex)*(vc.view.frame.size.width + self.distanceBetweenPages)
+				}
+			}, completion: completion)
+		}
+	}
+	
+	private func touchBegan(at point: CGPoint) {
+		self.moveEnabled = false
+		self.lastSwipeTranslation = point
+	}
+	
+	private func touchTranslated(by translation: CGPoint) {
+		print("ViewPager: touchTranslated: \(translation.x)")
+		guard let ds = self.dataSource else {
+			return self.reset()
+		}
+		let dx = translation.x - self.lastSwipeTranslation.x
+		if self._currentIndex <= 0, dx > 0 {
+			return self.reset() // TODO: show limit reached UI in left
+		} else if let n = self.dataSource?.numberOfPages(), self._currentIndex >= n - 1, dx < 0 {
+			return self.reset() // TODO: show limit reached UI in right
+		}
+		let rtl = UIView.userInterfaceLayoutDirection(for: self.semanticContentAttribute) == .rightToLeft
+		for i in max(0, self._currentIndex - self.offscreenPageLimit)...min(ds.numberOfPages() - 1, self._currentIndex + self.offscreenPageLimit) {
+			guard let vc = self.viewControllers[i] else {
+				continue
+			}
+			print("ViewPager: moving: \(i), \(vc.view.frame.origin.x), \(vc.view.frame.origin.x + dx*(rtl ? -1 : 1))")
+			vc.view.frame.origin.x = vc.view.frame.origin.x + dx*(rtl ? -1 : 1)
+		}
+		self.lastSwipeTranslation = translation
+	}
+	
+	func touchEnded(with translation: CGPoint, and velocity: CGPoint) {
+		let dx = translation.x
+		if self._currentIndex <= 0, dx > 0 {
+			return self.reset() // TODO: show limit reached UI in left
+		} else if let n = self.dataSource?.numberOfPages(), self._currentIndex >= n - 1, dx < 0 {
+			return self.reset() // TODO: show limit reached UI in right
+		}
+
+		let w = self.bounds.width - self.padding.left - self.padding.right
+		if abs(dx) > 0.6*w || abs(velocity.x) > self.thresholdSpeedForSwipe {
+			self.moveEnabled = true
+			self.setCurrent(index: self._currentIndex - (dx > 0 ? 1 : -1)) {
+				self.resetVariables()
+			}
+		} else {
+			self.reset()
+		}
+	}
+	
+	private func resetVariables() {
+		self.lastSwipeTranslation = .zero
+		self.moveEnabled = true
+	}
+	
+	private func reset() {
+		guard let ds = self.dataSource, let vc = self.viewControllers[self._currentIndex] else {
+			return self.resetVariables()
+		}
+		let frame = vc.view.frame, a = (frame.size.width + self.distanceBetweenPages)
+		let f = (a - abs(frame.origin.x - self.padding.left))/a
+		UIView.animate(withDuration: self.animationDuration*Double(f), animations: {
+			for i in max(0, self._currentIndex - self.offscreenPageLimit)..<self._currentIndex {
+				guard let vc = self.viewControllers[i] else {
+					continue
+				}
+				vc.view.frame.origin.x = self.padding.left - CGFloat(self._currentIndex - i)*(frame.size.width + self.distanceBetweenPages)
+			}
+			vc.view.frame.origin.x = self.padding.left
+			for i in min(ds.numberOfPages() - 1, self._currentIndex + 1)...min(ds.numberOfPages() - 1, self._currentIndex + self.offscreenPageLimit) {
+				guard let vc = self.viewControllers[i] else {
+					continue
+				}
+				vc.view.frame.origin.x = self.padding.left + CGFloat(i - self._currentIndex)*(frame.size.width + self.distanceBetweenPages)
+			}
+		}) { _ in
+			self.resetVariables()
+		}
+	}
+}
