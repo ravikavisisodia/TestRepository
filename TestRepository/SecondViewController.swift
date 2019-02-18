@@ -173,55 +173,41 @@ open class ViewPager: UIView {
 	private func isValidIndex(_ index: Int) -> Bool {
 		return index >= 0 && index < self.viewControllers.count
 	}
-
-	private var fifoQueue = [(to: Int, completion: (() -> ()))]()
-	private func move(from oldIndex: Int, to newIndex: Int) {
-		guard oldIndex != newIndex, self.isValidIndex(newIndex), let ds = self.dataSource else {
-			self.fifoQueue.remove(at: 0).completion()
-			guard let next = self.fifoQueue.first else {
-				return
-			}
-			return self.move(from: self._currentIndex, to: next.to)
+	
+	private func updatableIndices(centeredAt index: Int) -> (willBeRemoved: [Int], willBeAdded: [Int])? {
+		guard let ds = self.dataSource else {
+			return nil
 		}
-		let d = newIndex > oldIndex ? 1 : -1, parent = ds.parentController()
-		
 		let willBeRemovedIndices = (0..<self.viewControllers.count).filter { i in
-			return (i < newIndex - self.offscreenPageLimit || i > newIndex + self.offscreenPageLimit) && (self.viewControllers[i] != nil)
+			return (i < index - self.offscreenPageLimit || i > index + self.offscreenPageLimit) && (self.viewControllers[i] != nil)
 		}
-		var willBeAddedIndices = (max(0, newIndex - self.offscreenPageLimit)...min(ds.numberOfPages() - 1, newIndex + self.offscreenPageLimit)).filter { i in
+		let willBeAddedIndices = (max(0, index - self.offscreenPageLimit)...min(ds.numberOfPages() - 1, index + self.offscreenPageLimit)).filter { i in
 			if let vc = self.viewControllers[i], ds.forceUpdate(page: vc, at: i) {
 				vc.view.removeFromSuperview()
 				vc.removeFromParent()
 				self.viewControllers[i] = nil
 			}
-			guard self.viewControllers[i] == nil else {
-				return false
-			}
-			self.viewControllers[i] = ds.page(at: i)
-			return true
+			return self.viewControllers[i] == nil
 		}
-		willBeAddedIndices = d == -1 ? willBeAddedIndices.reversed() : willBeAddedIndices
-		
-		DispatchQueue.main.async {
-			let o = self.isValidIndex(oldIndex) ? self.viewControllers[oldIndex] : nil
-			self.delegate?.pager(self, willReplace: o, at: oldIndex, with: self.viewControllers[newIndex]!, at: newIndex)
+		return (willBeRemoved: willBeRemovedIndices, willBeAdded: willBeAddedIndices)
+	}
+	
+	private func add(indices: [Int], using oldIndex: Int, and newIndex: Int) {
+		guard let ds = self.dataSource else {
+			return
 		}
-		
-		for index in willBeRemovedIndices {
-			self.viewControllers[index]?.willMove(toParent: nil)
-		}
-		
+		let d = newIndex > oldIndex ? 1 : -1, parent = ds.parentController()
 		let w = self.bounds.width - self.padding.left - self.padding.right
 		let h = self.bounds.height - self.padding.top - self.padding.bottom
 		let rtl = UIView.userInterfaceLayoutDirection(for: self.semanticContentAttribute) == .rightToLeft
-		for index in willBeAddedIndices {
-			guard let viewController = self.viewControllers[index] else {
-				continue
-			}
+
+		for index in indices {
+			let viewController = self.viewControllers[index] ?? ds.page(at: index)
+			self.viewControllers[index] = viewController
 			parent.addChild(viewController)
 			self.addSubview(viewController.view)
 			if d == 1 {
-				if index == willBeAddedIndices.first {
+				if index == indices.first {
 					if oldIndex != -1, let prev = self.viewControllers[oldIndex + self.offscreenPageLimit] {
 						let x = prev.view.frame.origin.x + (rtl ? -1 : 1)*(w + self.distanceBetweenPages)
 						viewController.view.frame = CGRect(x: x, y: self.padding.top, width: w, height: h)
@@ -233,7 +219,7 @@ open class ViewPager: UIView {
 					viewController.view.frame = CGRect(x: x, y: self.padding.top, width: w, height: h)
 				}
 			} else {
-				if index == willBeAddedIndices.first {
+				if index == indices.first {
 					if let next = self.viewControllers[oldIndex - self.offscreenPageLimit] {
 						let x = next.view.frame.origin.x - (rtl ? -1 : 1)*(w + self.distanceBetweenPages)
 						viewController.view.frame = CGRect(x: x, y: self.padding.top, width: w, height: h)
@@ -246,15 +232,45 @@ open class ViewPager: UIView {
 				}
 			}
 		}
+	}
+
+	private var fifoQueue = [(to: Int, completion: (() -> ()))]()
+	private func move(from oldIndex: Int, to newIndex: Int) {
+		let loadNext = {
+			self.fifoQueue.remove(at: 0).completion()
+			guard let next = self.fifoQueue.first else {
+				return
+			}
+			self.move(from: self._currentIndex, to: next.to)
+		}
+		guard oldIndex != newIndex, self.isValidIndex(newIndex) else {
+			return loadNext()
+		}
+		guard var indices = self.updatableIndices(centeredAt: newIndex), let ds = self.dataSource else {
+			return loadNext()
+		}
+
+		let d = newIndex > oldIndex ? 1 : -1, parent = ds.parentController()
+		indices.willBeAdded = d == -1 ? indices.willBeAdded.reversed() : indices.willBeAdded
+		
+		DispatchQueue.main.async {
+			let o = self.isValidIndex(oldIndex) ? self.viewControllers[oldIndex] : nil
+			self.delegate?.pager(self, willReplace: o, at: oldIndex, with: self.viewControllers[newIndex]!, at: newIndex)
+		}
+		
+		for index in indices.willBeRemoved {
+			self.viewControllers[index]?.willMove(toParent: nil)
+		}
+		self.add(indices: indices.willBeAdded, using: oldIndex, and: newIndex)
 		
 		let completion: ((Bool) -> ()) = { _ in
-			for index in willBeRemovedIndices {
+			for index in indices.willBeRemoved {
 				let vc = self.viewControllers[index]
 				vc?.view.removeFromSuperview()
 				vc?.removeFromParent()
 				self.viewControllers[index] = nil
 			}
-			for index in willBeAddedIndices {
+			for index in indices.willBeAdded {
 				self.viewControllers[index]?.didMove(toParent: parent)
 			}
 			
@@ -272,8 +288,9 @@ open class ViewPager: UIView {
 		if oldIndex == -1 {
 			completion(true)
 		} else {
-			let x = self.viewControllers[newIndex]?.view.frame.origin.x ?? 0
-			let f = ((w + self.distanceBetweenPages) - abs(x - self.padding.left))/(w + self.distanceBetweenPages)
+			let frame = self.viewControllers[newIndex]?.view.frame ?? .zero, a = (frame.size.width + self.distanceBetweenPages)
+			let f = (a - abs(frame.origin.x - self.padding.left))/a
+			let rtl = UIView.userInterfaceLayoutDirection(for: self.semanticContentAttribute) == .rightToLeft
 			UIView.animate(withDuration: self.animationDuration*Double(f), animations: {
 				for i in 0..<newIndex {
 					guard let vc = self.viewControllers[i] else {
