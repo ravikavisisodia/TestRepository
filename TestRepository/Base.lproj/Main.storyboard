@@ -134,11 +134,18 @@
             </objects>
             <point key="canvasLocation" x="-1537" y="-4"/>
         </scene>
-        <!--Tab Bar Controller-->
+        <!--Main View Controller-->
         <scene sceneID="yl2-sM-qoP">
             <objects>
-                <tabBarController id="49e-Tb-3d3" sceneMemberID="viewController">
-                    <navigationItem key="navigationItem" id="kW2-Oi-TOP"/>
+                <tabBarController id="49e-Tb-3d3" customClass="MainViewController" customModule="TestRepository" customModuleProvider="target" sceneMemberID="viewController">
+                    <navigationItem key="navigationItem" id="kW2-Oi-TOP">
+                        <barButtonItem key="leftBarButtonItem" image="baseline_menu_black_24pt" id="5AJ-zl-bM2">
+                            <color key="tintColor" white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+                            <connections>
+                                <action selector="userDidClickSettingsBarButtonItem:" destination="49e-Tb-3d3" id="FuS-Br-Zw5"/>
+                            </connections>
+                        </barButtonItem>
+                    </navigationItem>
                     <tabBar key="tabBar" contentMode="scaleToFill" translucent="NO" itemPositioning="centered" id="W28-zg-YXA">
                         <rect key="frame" x="0.0" y="975" width="768" height="49"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" flexibleMinY="YES"/>
@@ -162,6 +169,7 @@
         </scene>
     </scenes>
     <resources>
+        <image name="baseline_menu_black_24pt" width="72" height="72"/>
         <image name="first" width="30" height="30"/>
         <image name="second" width="30" height="30"/>
     </resources>

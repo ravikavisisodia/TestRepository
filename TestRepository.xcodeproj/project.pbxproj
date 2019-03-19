@@ -14,6 +14,7 @@
 		98578A28217F4DB900DC9F96 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 98578A27217F4DB900DC9F96 /* Assets.xcassets */; };
 		98578A2B217F4DB900DC9F96 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 98578A29217F4DB900DC9F96 /* LaunchScreen.storyboard */; };
 		986C90532241030300F81F5A /* ViewPager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 986C90522241030300F81F5A /* ViewPager.swift */; };
+		986C90552241098200F81F5A /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 986C90542241098200F81F5A /* MainViewController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -26,6 +27,7 @@
 		98578A2A217F4DB900DC9F96 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		98578A2C217F4DB900DC9F96 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		986C90522241030300F81F5A /* ViewPager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewPager.swift; sourceTree = "<group>"; };
+		986C90542241098200F81F5A /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
 		98C31A3E221A9929005ABDD1 /* ar */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ar; path = ar.lproj/Main.strings; sourceTree = "<group>"; };
 		98C31A3F221A992A005ABDD1 /* ar */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ar; path = ar.lproj/LaunchScreen.strings; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -61,6 +63,7 @@
 			isa = PBXGroup;
 			children = (
 				98578A1E217F4DB800DC9F96 /* AppDelegate.swift */,
+				986C90542241098200F81F5A /* MainViewController.swift */,
 				98578A20217F4DB800DC9F96 /* FirstViewController.swift */,
 				98578A22217F4DB800DC9F96 /* SecondViewController.swift */,
 				986C90522241030300F81F5A /* ViewPager.swift */,
@@ -147,6 +150,7 @@
 				98578A23217F4DB800DC9F96 /* SecondViewController.swift in Sources */,
 				98578A1F217F4DB800DC9F96 /* AppDelegate.swift in Sources */,
 				98578A21217F4DB800DC9F96 /* FirstViewController.swift in Sources */,
+				986C90552241098200F81F5A /* MainViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
